@@ -235,7 +235,7 @@ class AgentLoop:
                 final_content = response.content
                 break
         
-        if final_content is None:
+        if not final_content:
             final_content = "I've completed processing but have no response to give."
         
         # Save to session
