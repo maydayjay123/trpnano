@@ -26,10 +26,11 @@ class LiteLLMProvider(LLMProvider):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         
-        # Detect OpenRouter by api_key prefix or explicit api_base
+        # Detect OpenRouter by api_key prefix, api_base, or model prefix
         self.is_openrouter = (
             (api_key and api_key.startswith("sk-or-")) or
-            (api_base and "openrouter" in api_base)
+            (api_base and "openrouter" in api_base) or
+            default_model.startswith("openrouter/")
         )
         
         # Track if using custom endpoint (vLLM, etc.)
@@ -104,7 +105,8 @@ class LiteLLMProvider(LLMProvider):
             model = f"hosted_vllm/{model}"
         
         # For Gemini, ensure gemini/ prefix if not already present
-        if "gemini" in model.lower() and not model.startswith("gemini/"):
+        # Skip if already routed through OpenRouter
+        if "gemini" in model.lower() and not model.startswith("gemini/") and not model.startswith("openrouter/"):
             model = f"gemini/{model}"
         
         kwargs: dict[str, Any] = {
