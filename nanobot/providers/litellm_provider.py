@@ -1,6 +1,9 @@
 """LiteLLM provider implementation for multi-provider support."""
 
+import json
 import os
+import re
+import uuid
 from typing import Any
 
 import litellm
@@ -128,12 +131,50 @@ class LiteLLMProvider(LLMProvider):
             response = await acompletion(**kwargs)
             return self._parse_response(response)
         except Exception as e:
+            # Groq returns tool_use_failed with the actual function call in XML format.
+            # Parse it out and return as a proper tool call.
+            parsed = self._try_parse_groq_failed_tool_call(e)
+            if parsed:
+                return parsed
             # Return error as content for graceful handling
             return LLMResponse(
                 content=f"Error calling LLM: {str(e)}",
                 finish_reason="error",
             )
     
+    @staticmethod
+    def _try_parse_groq_failed_tool_call(exc: Exception) -> LLMResponse | None:
+        """Parse Groq's XML-style failed tool calls into proper tool calls.
+
+        Groq's Llama models generate <function=name({...})></function> instead
+        of proper JSON tool calls. Groq rejects these but includes the raw
+        generation in the error. We extract and use it.
+        """
+        err_str = str(exc)
+        if "tool_use_failed" not in err_str and "failed_generation" not in err_str:
+            return None
+
+        # Match pattern: <function=name({...})></function>  or  <function=name({...})</function>
+        match = re.search(r'<function=(\w+)\((\{.*?\})\)', err_str)
+        if not match:
+            return None
+
+        func_name = match.group(1)
+        try:
+            args = json.loads(match.group(2))
+        except json.JSONDecodeError:
+            return None
+
+        return LLMResponse(
+            content=None,
+            tool_calls=[ToolCallRequest(
+                id=f"groq_{uuid.uuid4().hex[:8]}",
+                name=func_name,
+                arguments=args,
+            )],
+            finish_reason="tool_calls",
+        )
+
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
         choice = response.choices[0]
@@ -145,7 +186,6 @@ class LiteLLMProvider(LLMProvider):
                 # Parse arguments from JSON string if needed
                 args = tc.function.arguments
                 if isinstance(args, str):
-                    import json
                     try:
                         args = json.loads(args)
                     except json.JSONDecodeError:
