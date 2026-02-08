@@ -1,5 +1,6 @@
 """LiteLLM provider implementation for multi-provider support."""
 
+import asyncio
 import json
 import os
 import re
@@ -127,21 +128,41 @@ class LiteLLMProvider(LLMProvider):
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
         
-        try:
-            response = await acompletion(**kwargs)
-            return self._parse_response(response)
-        except Exception as e:
-            # Groq returns tool_use_failed with the actual function call in XML format.
-            # Parse it out and return as a proper tool call.
-            parsed = self._try_parse_groq_failed_tool_call(e)
-            if parsed:
-                return parsed
-            # Return error as content for graceful handling
-            return LLMResponse(
-                content=f"Error calling LLM: {str(e)}",
-                finish_reason="error",
-            )
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = await acompletion(**kwargs)
+                return self._parse_response(response)
+            except Exception as e:
+                err_str = str(e)
+
+                # Auto-retry on rate limit with parsed delay
+                if "rate_limit" in err_str.lower() or "429" in err_str:
+                    wait = self._parse_retry_delay(err_str)
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(wait)
+                        continue
+
+                # Groq XML-style tool call fallback
+                parsed = self._try_parse_groq_failed_tool_call(e)
+                if parsed:
+                    return parsed
+
+                return LLMResponse(
+                    content=f"Error calling LLM: {err_str}",
+                    finish_reason="error",
+                )
+
+        return LLMResponse(content="Rate limited after retries. Try again shortly.", finish_reason="error")
     
+    @staticmethod
+    def _parse_retry_delay(err_str: str) -> float:
+        """Extract retry delay from rate limit error, default 30s."""
+        match = re.search(r'try again in (\d+\.?\d*)s', err_str, re.IGNORECASE)
+        if match:
+            return min(float(match.group(1)) + 1, 60)
+        return 30
+
     @staticmethod
     def _try_parse_groq_failed_tool_call(exc: Exception) -> LLMResponse | None:
         """Parse Groq's XML-style failed tool calls into proper tool calls.
