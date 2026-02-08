@@ -79,40 +79,40 @@ class SolanaTraderTool(Tool):
                     ],
                     "description": "Action to perform",
                 },
-                "token_address": {
+                "input": {
                     "type": "string",
-                    "description": "Solana token mint address",
-                },
-                "amount_sol": {
-                    "type": "number",
-                    "description": "SOL amount to trade (buy) or token amount in smallest units (sell)",
-                },
-                "side": {
-                    "type": "string",
-                    "enum": ["buy", "sell"],
-                    "description": "Trade direction",
-                },
-                "stop_loss_pct": {
-                    "type": "number",
-                    "description": "Stop-loss % from entry",
-                },
-                "take_profit_pct": {
-                    "type": "number",
-                    "description": "Take-profit % from entry",
-                },
-                "slippage_bps": {
-                    "type": "integer",
-                    "description": "Slippage tolerance in basis points",
-                },
-                "note": {
-                    "type": "string",
-                    "description": "A lesson or guidance note to remember (for 'learn' action)",
+                    "description": "Parameters as key=value pairs. E.g. token_address=ABC123,amount_sol=0.1,side=buy,note=avoid low liq tokens",
                 },
             },
             "required": ["action"],
         }
 
-    async def execute(self, action: str, **kwargs: Any) -> str:
+    @staticmethod
+    def _parse_input(raw: str) -> dict[str, Any]:
+        """Parse 'key=value,key2=value2' into a dict."""
+        params: dict[str, Any] = {}
+        if not raw:
+            return params
+        for pair in raw.split(","):
+            if "=" not in pair:
+                continue
+            k, v = pair.split("=", 1)
+            k = k.strip()
+            v = v.strip()
+            # Auto-convert numeric values
+            try:
+                if "." in v:
+                    params[k] = float(v)
+                else:
+                    params[k] = int(v)
+            except ValueError:
+                params[k] = v
+        return params
+
+    async def execute(self, action: str, input: str = "", **kwargs: Any) -> str:
+        # Merge parsed input with any direct kwargs
+        parsed = self._parse_input(input)
+        kwargs.update(parsed)
         if not self._config.enabled:
             return "Error: Solana trading not enabled. Set tools.solanaTrading.enabled=true in config."
         if not self._wallet_pubkey:
