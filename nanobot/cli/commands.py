@@ -209,6 +209,7 @@ def gateway(
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         cron_service=cron,
+        solana_config=config.tools.solana_trading if config.tools.solana_trading.enabled else None,
     )
     
     # Set cron callback (needs agent)
@@ -316,6 +317,7 @@ def agent(
         workspace=config.workspace_path,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
+        solana_config=config.tools.solana_trading if config.tools.solana_trading.enabled else None,
     )
     
     if message:

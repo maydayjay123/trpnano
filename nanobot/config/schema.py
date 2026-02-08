@@ -92,10 +92,41 @@ class ExecToolConfig(BaseModel):
     restrict_to_workspace: bool = False  # If true, block commands accessing paths outside workspace
 
 
+class SolanaRiskLimits(BaseModel):
+    """Risk management limits for Solana trading."""
+    max_position_sol: float = 0.5
+    max_portfolio_sol: float = 5.0
+    max_slippage_bps: int = 300
+    stop_loss_pct: float = 20.0
+    take_profit_pct: float = 50.0
+    min_liquidity_usd: float = 50000.0
+    min_holder_count: int = 100
+    max_top_holder_pct: float = 20.0
+    min_volume_24h_usd: float = 10000.0
+    cooldown_seconds: int = 300
+
+
+class SolanaTradingConfig(BaseModel):
+    """Solana meme coin trading configuration."""
+    enabled: bool = False
+    wallet_private_key: str = ""
+    helius_api_key: str = ""
+    rpc_url: str = ""
+    risk: SolanaRiskLimits = Field(default_factory=SolanaRiskLimits)
+    dexscreener_base_url: str = "https://api.dexscreener.com"
+    jupiter_base_url: str = "https://api.jup.ag"
+    dry_run: bool = True
+    autonomous: bool = True  # Bot trades on its own, user only guides
+    min_trend_score: int = 65  # Minimum score to auto-buy
+    scan_interval_seconds: int = 300  # How often to scan for trends
+    exit_check_seconds: int = 120  # How often to check SL/TP
+
+
 class ToolsConfig(BaseModel):
     """Tools configuration."""
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    solana_trading: SolanaTradingConfig = Field(default_factory=SolanaTradingConfig)
 
 
 class Config(BaseSettings):

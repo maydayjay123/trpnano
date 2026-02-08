@@ -44,8 +44,9 @@ class AgentLoop:
         brave_api_key: str | None = None,
         exec_config: "ExecToolConfig | None" = None,
         cron_service: "CronService | None" = None,
+        solana_config: "SolanaTradingConfig | None" = None,
     ):
-        from nanobot.config.schema import ExecToolConfig
+        from nanobot.config.schema import ExecToolConfig, SolanaTradingConfig
         from nanobot.cron.service import CronService
         self.bus = bus
         self.provider = provider
@@ -55,6 +56,7 @@ class AgentLoop:
         self.brave_api_key = brave_api_key
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
+        self.solana_config = solana_config
         
         self.context = ContextBuilder(workspace)
         self.sessions = SessionManager(workspace)
@@ -101,6 +103,12 @@ class AgentLoop:
         # Cron tool (for scheduling)
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+
+        # Solana trading tool
+        if self.solana_config and self.solana_config.enabled:
+            from nanobot.agent.tools.solana_trading.tool import SolanaTraderTool
+            data_dir = self.workspace.parent if str(self.workspace).endswith("workspace") else self.workspace
+            self.tools.register(SolanaTraderTool(config=self.solana_config, data_dir=data_dir))
     
     async def run(self) -> None:
         """Run the agent loop, processing messages from the bus."""
@@ -168,7 +176,11 @@ class AgentLoop:
         cron_tool = self.tools.get("cron")
         if isinstance(cron_tool, CronTool):
             cron_tool.set_context(msg.channel, msg.chat_id)
-        
+
+        solana_tool = self.tools.get("solana_trader")
+        if solana_tool and hasattr(solana_tool, "set_context"):
+            solana_tool.set_context(msg.channel, msg.chat_id)
+
         # Build initial messages (use get_history for LLM-formatted messages)
         messages = self.context.build_messages(
             history=session.get_history(),
@@ -272,7 +284,11 @@ class AgentLoop:
         cron_tool = self.tools.get("cron")
         if isinstance(cron_tool, CronTool):
             cron_tool.set_context(origin_channel, origin_chat_id)
-        
+
+        solana_tool = self.tools.get("solana_trader")
+        if solana_tool and hasattr(solana_tool, "set_context"):
+            solana_tool.set_context(origin_channel, origin_chat_id)
+
         # Build messages with the announce content
         messages = self.context.build_messages(
             history=session.get_history(),
