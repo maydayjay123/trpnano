@@ -154,26 +154,39 @@ class LiteLLMProvider(LLMProvider):
         if "tool_use_failed" not in err_str and "failed_generation" not in err_str:
             return None
 
-        # Match pattern: <function=name({...})></function>  or  <function=name({...})</function>
-        match = re.search(r'<function=(\w+)\((\{.*?\})\)', err_str)
-        if not match:
-            return None
-
-        func_name = match.group(1)
+        # Decode unicode escapes (\u003c -> <) so regex can match
         try:
-            args = json.loads(match.group(2))
-        except json.JSONDecodeError:
-            return None
+            decoded = err_str.encode().decode("unicode_escape")
+        except Exception:
+            decoded = err_str
 
-        return LLMResponse(
-            content=None,
-            tool_calls=[ToolCallRequest(
-                id=f"groq_{uuid.uuid4().hex[:8]}",
-                name=func_name,
-                arguments=args,
-            )],
-            finish_reason="tool_calls",
-        )
+        # Also try replacing common unicode escapes manually
+        for s in (decoded, err_str):
+            cleaned = s.replace("\\u003c", "<").replace("\\u003e", ">")
+            match = re.search(r'<function=(\w+)\((\{.*?\})\)', cleaned)
+            if match:
+                func_name = match.group(1)
+                try:
+                    args = json.loads(match.group(2))
+                except json.JSONDecodeError:
+                    # Try with unescaped quotes
+                    try:
+                        raw = match.group(2).replace('\\"', '"')
+                        args = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+
+                return LLMResponse(
+                    content=None,
+                    tool_calls=[ToolCallRequest(
+                        id=f"groq_{uuid.uuid4().hex[:8]}",
+                        name=func_name,
+                        arguments=args,
+                    )],
+                    finish_reason="tool_calls",
+                )
+
+        return None
 
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
