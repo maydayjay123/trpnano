@@ -100,10 +100,18 @@ class TelegramChannel(BaseChannel):
         
         self._running = True
         
-        # Build the application
+        # Build the application with generous timeouts for slow connections (e.g. Pi)
+        from telegram.request import HTTPXRequest
+        request = HTTPXRequest(
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30,
+        )
         self._app = (
             Application.builder()
             .token(self.config.token)
+            .request(request)
             .build()
         )
         
