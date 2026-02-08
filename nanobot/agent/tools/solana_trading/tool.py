@@ -193,7 +193,7 @@ class SolanaTraderTool(Tool):
         # Auto-buy candidates (autonomous mode)
         auto_bought: list[str] = []
 
-        for t, score, buy_pct in scored[:15]:
+        for t, score, buy_pct in scored[:5]:
             flags: list[str] = []
             if t.liquidity_usd < risk.min_liquidity_usd:
                 flags.append("LOW_LIQ")
@@ -236,8 +236,6 @@ class SolanaTraderTool(Tool):
         if auto_bought:
             lines.append(f"\nAUTO-BOUGHT ({len(auto_bought)}):")
             lines.extend(auto_bought)
-
-        lines.append(f"\n--- STRATEGY MEMORY ---\n{memory_ctx}")
 
         return "\n".join(lines)
 
